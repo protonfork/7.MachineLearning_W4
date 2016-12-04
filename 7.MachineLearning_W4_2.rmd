@@ -1,0 +1,88 @@
+---
+title: "Machine Learning Project : Humain Activity Recognition"
+author: "Nicolas"
+date: "14 novembre 2016"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(caret)
+library(GGally)
+library(zoo)
+```
+
+## Sourcing
+
+data frm http://groupware.les.inf.puc-rio.br/har
+
+```{r Source of Data,cache=TRUE }
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+              "training.csv")
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+              "test.csv")
+```
+
+
+## Processing
+
+```{r Source of Data,cache=TRUE }
+training <- read.csv("training.csv",stringsAsFactors = FALSE)
+```
+
+
+## Exploration
+
+
+```{r markov }
+training.common <- data.frame(training[,c("user_name","classe")])
+
+training.belt <- training[,c("roll_belt", "pitch_belt","yaw_belt","gyros_belt_x","gyros_belt_y","gyros_belt_z","accel_belt_x","accel_belt_y","accel_belt_z","magnet_belt_x","magnet_belt_y","magnet_belt_z")]
+
+training.arm <- training[,c("roll_arm", "pitch_arm","yaw_arm","gyros_arm_x","gyros_arm_y","gyros_arm_z","accel_arm_x","accel_arm_y","accel_arm_z","magnet_arm_x","magnet_arm_y","magnet_arm_z")]
+
+training.forearm <- training[,c("roll_forearm", "pitch_forearm","yaw_forearm","gyros_forearm_x","gyros_forearm_y","gyros_forearm_z","accel_forearm_x","accel_forearm_y","accel_forearm_z","magnet_forearm_x","magnet_forearm_y","magnet_forearm_z")]
+
+training.dumbbell <- training[,c("roll_dumbbell", "pitch_dumbbell","yaw_dumbbell","gyros_dumbbell_x","gyros_dumbbell_y","gyros_dumbbell_z","accel_dumbbell_x","accel_dumbbell_y","accel_dumbbell_z","magnet_dumbbell_x","magnet_dumbbell_y","magnet_dumbbell_z")]
+
+training.common$stamp <- as.POSIXct(as.numeric(paste0(training$raw_timestamp_part_1,".",training$raw_timestamp_part_2)),tz="GMT",origin = "1970-01-01")
+
+train.zoo <- data.frame(training.common[training$classe=="A",],
+                        training.arm[training$classe=="A",],
+                        training.forearm[training$classe=="A",],
+                        training.dumbbell[training$classe=="A",],
+                        training.belt[training$classe=="A",])
+
+
+train.zooB <- data.frame(training.common[training$classe=="B",],
+                        training.arm[training$classe=="B",],
+                        training.forearm[training$classe=="B",],
+                        training.dumbbell[training$classe=="B",],
+                        training.belt[training$classe=="B",])
+library(zoo)
+#train.zoo <- zoo(train.zoo,train.zoo$stamp)
+
+library("depmixS4") #the HMM library we’ll use 
+library("quantmod")
+set.seed(1)
+test<- zoo(train.zoo$magnet_arm_z[train.zoo$user_name=="adelmo"],train.zoo$stamp[train.zoo$user_name=="adelmo"])
+mod <- depmix(test~1,nstates=2,ntimes=1165)
+fm <- fit(mod)
+plot(ts(posterior(fm)))
+
+test2<- zoo(train.zoo$magnet_arm_z[train.zoo$user_name=="pedro"],train.zoo$stamp[train.zoo$user_name=="pedro"])
+mod2 <- depmix(test2~1,nstates=2,ntimes=length(test2))
+fm2 <- fit(mod2)
+
+test3<- zoo(train.zooB$magnet_arm_z[train.zoo$user_name=="adelmo"],train.zooB$stamp[train.zooB$user_name=="adelmo"])
+mod3 <- depmix(test3~1,nstates=2,ntimes=length(test3))
+fm3 <- fit(mod3)
+
+
+test4<- zoo(train.zooB$magnet_arm_z[train.zoo$user_name=="pedro"],train.zooB$stamp[train.zooB$user_name=="pedro"])
+mod4 <- depmix(test4~1,nstates=2,ntimes=length(test4))
+fm4 <- fit(mod4)
+
+```  

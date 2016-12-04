@@ -1,0 +1,133 @@
+---
+title: "Machine Learning Project : Humain Activity Recognition"
+author: "Nicolas"
+date: "14 novembre 2016"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(caret)
+library(GGally)
+library(zoo)
+```
+
+## Sourcing
+
+data frm http://groupware.les.inf.puc-rio.br/har
+
+```{r Source of Data,cache=TRUE }
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+              "training.csv")
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+              "test.csv")
+```
+
+
+## Processing
+
+```{r Source of Data,cache=TRUE }
+training <- read.csv("training.csv",stringsAsFactors = FALSE)
+str(training)
+names(training)
+head(training)
+```
+
+
+## Processing
+
+```{r Source of Data,cache=TRUE }
+training <- read.csv("training.csv",stringsAsFactors = FALSE)
+str(training)
+names(training)
+head(training)
+```
+
+## Exploration
+
+```{r Source of Data,cache=TRUE }
+sample_n(training,10)
+
+sub.training1 <- training[,c("roll_belt", "pitch_belt","yaw_belt","total_accel_belt","gyros_belt_x","gyros_belt_y","gyros_belt_z","accel_belt_x","accel_belt_y","accel_belt_z","magnet_belt_x","magnet_belt_y","magnet_belt_z","roll_arm","pitch_arm","yaw_arm","total_accel_arm","classe","user_name","raw_timestamp_part_1","raw_timestamp_part_2")]
+
+sub.training1$tsstamp <- as.POSIXlt(as.numeric(paste0(sub.training1$raw_timestamp_part_1,".",sub.training1$raw_timestamp_part_2)),tz="GMT",origin = "1970-01-01")
+
+sub.training1.zoo <- zoo(sub.training1,sub.training1$tsstamp)
+
+parts <- createFolds(subsettest$classe, list=FALSE,k=10)
+```
+
+```{r}
+lowerFn <- function(data, mapping, col, method = "lm", ...) {
+  ggplot(data = data, mapping = mapping) + geom_point(aes(color = classe)) +
+    geom_smooth(method = method, color = "red", ...)}
+
+ggpairs(subsub, axisLabels="none",
+        upper = list(continuous = wrap("cor", size = 4)), 
+        diag = list(continuous = wrap("barDiag", colour = "blue", bins = 30)),
+        lower = list(continuous = wrap(lowerFn, method = "lm")))
+```
+
+
+```{r }
+training.belt <-  training[,grep("_belt",names(training))]
+training.arm <-  training[,grep("_arm",names(training))]
+training.forearm <-  training[,grep("_forearm",names(training))]
+training.dumbbell <-  training[,grep("_dumbbell",names(training))]
+
+common <- c("num_window","classe","raw_timestamp_part_2","user_name","cvtd_timestamp","new_window","raw_timestamp_part_1","X")
+
+commonTable <- training[,common]
+
+training.belt <-  data.frame(commonTable, training.belt)
+training.arm <-  data.frame(commonTable, training.arm)
+training.forearm <-  data.frame(commonTable, training.forearm)
+training.dumbbell <-  data.frame(commonTable, training.dumbbell)
+
+ggplot(training.arm)+geom_point(aes(x=paste0(raw_timestamp_part_1,raw_timestamp_part_2),y=roll_arm,color=classe))+facet_grid(.~user_name)
+ 
+```
+
+
+```{r }
+training.carlitos.belt <-  training.belt[training.belt$user_name=="carlitos",]
+training.carlitos.arm <-  training.arm[training.arm$user_name=="carlitos",]
+training.carlitos.forearm <-  training.forearm[training.forearm$user_name=="carlitos",]
+training.carlitos.dumbbell <-  training.forearm[training.forearm$user_name=="carlitos",]
+
+ggplot(training.carlitos.arm)+geom_point(aes(x=paste0(raw_timestamp_part_1,raw_timestamp_part_2),y=roll_arm,color=classe))
+
+```
+
+
+```{r markov }
+subt <- training[,c("roll_belt", "pitch_belt","yaw_belt","total_accel_belt","gyros_belt_x","gyros_belt_y","gyros_belt_z","accel_belt_x","accel_belt_y","accel_belt_z","magnet_belt_x","magnet_belt_y","magnet_belt_z","roll_arm","pitch_arm","yaw_arm","total_accel_arm","classe","user_name","raw_timestamp_part_1","raw_timestamp_part_2")]
+
+subt$tsstamp <- as.POSIXlt(as.numeric(paste0(subt$raw_timestamp_part_1,".",subt$raw_timestamp_part_2)),tz="GMT",origin = "1970-01-01")
+
+train.classA <- subt[subt$class=="A",]
+train.classB <- subt[subt$class=="B",]
+train.classC <- subt[subt$class=="C",]
+train.classD <- subt[subt$class=="D",]
+train.classE <- subt[subt$class=="E",]
+
+
+train.classA.sub <- dplyr::select(train.classA,-user_name, -tsstamp,-raw_timestamp_part_1,-raw_timestamp_part_2)
+train.classB.sub <- dplyr::select(train.classB,-user_name, -classe, -tsstamp,-raw_timestamp_part_1,-raw_timestamp_part_2)
+train.classC.sub <- dplyr::select(train.classC,-user_name, -classe, -tsstamp,-raw_timestamp_part_1,-raw_timestamp_part_2)
+train.classD.sub <- dplyr::select(train.classD,-user_name, -classe, -tsstamp,-raw_timestamp_part_1,-raw_timestamp_part_2)
+train.classE.sub <- dplyr::select(train.classE,-user_name, -classe, -tsstamp,-raw_timestamp_part_1,-raw_timestamp_part_2)
+
+train.classA.zoo <- zoo(train.classA.sub,train.classA$tsstamp)
+train.classB.zoo <- zoo(train.classA.sub,train.classB$tsstamp)
+train.classC.zoo <- zoo(train.classA.sub,train.classC$tsstamp)
+train.classD.zoo <- zoo(train.classA.sub,train.classD$tsstamp)
+train.classE.zoo <- zoo(train.classA.sub,train.classE$tsstamp)
+
+library("depmixS4") #the HMM library we’ll use 
+library("quantmod")
+
+fitA <- depmix(classe~.,data=train.classA.zoo,nstates=3)
+```  
