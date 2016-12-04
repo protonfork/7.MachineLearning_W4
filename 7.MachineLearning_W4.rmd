@@ -5,129 +5,148 @@ date: "14 novembre 2016"
 output: pdf_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup}
 knitr::opts_chunk$set(echo = TRUE)
+library(plyr)
 library(dplyr)
-library(caret)
 library(GGally)
-library(zoo)
+library(caret)
+library(xgboost)
+set.seed(1234)
 ```
 
-## Sourcing
+## Summary
+The above study consist into the selection of a machine learning model for the classification of observations related to Weight Lifting Exercise. Data set provided has been splitted in a train and test sets. Train set model has been developped and cross validated using random forest algorithm and XgBoost, then selected based on the accurary on the test set. 
 
-data frm http://groupware.les.inf.puc-rio.br/har
+Although Random Forest shown good result with a >99% accuracy, XgBoost has been selected considering a slightly better accurary with a smaller calculation time. Several features has reveled themselves to be important for classification, in particular XXXXxxx, XXXxxx and XxxxxXX with gather XX% of impact on the selected model.
+
+Finaly, provided validation set of 20 observations has been classified using the trained model.
+
+## Processing
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively.  In this project, our goal has been to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.data frm http://groupware.les.inf.puc-rio.br/har
 
 ```{r Source of Data,cache=TRUE }
 download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
               "training.csv")
-
 download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
               "test.csv")
-```
-
-
-## Processing
-
-```{r Source of Data,cache=TRUE }
 training <- read.csv("training.csv",stringsAsFactors = FALSE)
-str(training)
-names(training)
-head(training)
 ```
 
+From the initial package of data, we first will subset the elements to keep only variables,  without NA (only non numerical value being the name of participant and response column). In addition, we removed any elements related to the timestamp, as the search model is timeset independant [considering that the expected prediction will be done on 20 time idependant observation]. 
 
-## Processing
-
-```{r Source of Data,cache=TRUE }
-training <- read.csv("training.csv",stringsAsFactors = FALSE)
-str(training)
-names(training)
-head(training)
+```{r Subset of Source of Data,cache=TRUE }
+library(corrplot)
+sub.training <- training %>% select_if(is.numeric) %>% 
+        select_if(function(col)all(!is.na(col))) %>%
+        dplyr::select(-raw_timestamp_part_1,-raw_timestamp_part_2,-num_window,-X)
+sub.training <- scale(sub.training,center=TRUE,scale=TRUE);
 ```
 
-## Exploration
+Correlation between features, as shown in the following figures, is in vast majority in good chape for later analysis, with most of the feature being square.
 
-```{r Source of Data,cache=TRUE }
-sample_n(training,10)
-
-sub.training1 <- training[,c("roll_belt", "pitch_belt","yaw_belt","total_accel_belt","gyros_belt_x","gyros_belt_y","gyros_belt_z","accel_belt_x","accel_belt_y","accel_belt_z","magnet_belt_x","magnet_belt_y","magnet_belt_z","roll_arm","pitch_arm","yaw_arm","total_accel_arm","classe","user_name","raw_timestamp_part_1","raw_timestamp_part_2")]
-
-sub.training1$tsstamp <- as.POSIXlt(as.numeric(paste0(sub.training1$raw_timestamp_part_1,".",sub.training1$raw_timestamp_part_2)),tz="GMT",origin = "1970-01-01")
-
-sub.training1.zoo <- zoo(sub.training1,sub.training1$tsstamp)
-
-parts <- createFolds(subsettest$classe, list=FALSE,k=10)
+```{r Correlation Plot}
+cor.sub.training <- cor(sub.training)
+corrplot(cor.sub.training, order = "hclust", tl.col="black", tl.cex=.45)
 ```
 
-```{r}
-lowerFn <- function(data, mapping, col, method = "lm", ...) {
-  ggplot(data = data, mapping = mapping) + geom_point(aes(color = classe)) +
-    geom_smooth(method = method, color = "red", ...)}
+We filter the feature set, limiting the correlation factor to 0.85. It will limit risks on model calculation, and slightly increase the calculation.
 
-ggpairs(subsub, axisLabels="none",
-        upper = list(continuous = wrap("cor", size = 4)), 
-        diag = list(continuous = wrap("barDiag", colour = "blue", bins = 30)),
-        lower = list(continuous = wrap(lowerFn, method = "lm")))
+```{r check for highly correlated features}
+HighCorr <- findCorrelation(cor.sub.training, 0.85)
+sub.filtered.training <- sub.training[,-HighCorr]
+cor.sub.f.training <- cor(sub.filtered.training)
+corrplot(cor.sub.f.training, order = "hclust", tl.col="black", tl.cex=.45)
 ```
 
+## Model Training
+We trained two models for classificiation, with multiclass (5 expected) :
 
-```{r }
-training.belt <-  training[,grep("_belt",names(training))]
-training.arm <-  training[,grep("_arm",names(training))]
-training.forearm <-  training[,grep("_forearm",names(training))]
-training.dumbbell <-  training[,grep("_dumbbell",names(training))]
+- A random forest
+- A XgBoost model
 
-common <- c("num_window","classe","raw_timestamp_part_2","user_name","cvtd_timestamp","new_window","raw_timestamp_part_1","X")
+In order to compare both models, the filtered training set is splitted in training and test set. Test set will be used to compare the models.
 
-commonTable <- training[,common]
+In addition, both are crossvalidated using a 4 fold resample.
 
-training.belt <-  data.frame(commonTable, training.belt)
-training.arm <-  data.frame(commonTable, training.arm)
-training.forearm <-  data.frame(commonTable, training.forearm)
-training.dumbbell <-  data.frame(commonTable, training.dumbbell)
+```{r training models : random forest (ranger package) }
+trainIndex <- createDataPartition(training$classe,p=.8,list=F,times=1)
+train.set <- sub.filtered.training[trainIndex,]
+test.set <- sub.filtered.training[-trainIndex,]
 
-ggplot(training.arm)+geom_point(aes(x=paste0(raw_timestamp_part_1,raw_timestamp_part_2),y=roll_arm,color=classe))+facet_grid(.~user_name)
- 
+train.labels <- as.factor(training$classe[trainIndex])
+test.labels <- as.factor(training$classe[-trainIndex])
+
+ctrl <- trainControl(method = "cv", number = 4, returnResamp = "all", search = "random",classProbs = T)
+
+ranger.fit <- train(y=train.labels,x=train.set, method = "ranger", trControl = ctrl, metric = "Accuracy", preProc = c("center", "scale"), importance = "permutation", verbose=F)
 ```
 
+```{r training models : XG Boost}
+train.xgb <- xgb.DMatrix(data.matrix(train.set), label=(as.numeric(train.labels)-1), missing=NA)
 
-```{r }
-training.carlitos.belt <-  training.belt[training.belt$user_name=="carlitos",]
-training.carlitos.arm <-  training.arm[training.arm$user_name=="carlitos",]
-training.carlitos.forearm <-  training.forearm[training.forearm$user_name=="carlitos",]
-training.carlitos.dumbbell <-  training.forearm[training.forearm$user_name=="carlitos",]
+params.xgb <- list(
+        "eta"=0.1, 
+        "max_depth"=15,
+        "subsamble"=0.8,
+        "colsample_bytree"=0.8,
+        "eval_metric"="merror",
+        "objective"="multi:softprob",
+        "num_class"=5,
+        "nthread"=4,
+        "min_child_weigth"=12
+)
 
-ggplot(training.carlitos.arm)+geom_point(aes(x=paste0(raw_timestamp_part_1,raw_timestamp_part_2),y=roll_arm,color=classe))
+xgb.fit.cv <- xgb.cv(param=params.xgb, data=train.xgb, nfold=4, nrounds=300, prediction=TRUE, verbose=F)
+
+best.rank <- which.min(xgb.fit.cv$dt[, test.merror.mean]) 
+
+xgb.fit <- xgboost(param=params.xgb,data = train.xgb,nrounds=best.rank, verbose=F)
 
 ```
 
+## model selection
 
-```{r markov }
-subt <- training[,c("roll_belt", "pitch_belt","yaw_belt","total_accel_belt","gyros_belt_x","gyros_belt_y","gyros_belt_z","accel_belt_x","accel_belt_y","accel_belt_z","magnet_belt_x","magnet_belt_y","magnet_belt_z","roll_arm","pitch_arm","yaw_arm","total_accel_arm","classe","user_name","raw_timestamp_part_1","raw_timestamp_part_2")]
+Here under confugion matrix shows a sligth advantage for the XgBoost algoritm. Accuraty on the test set of both models are very good, and we expect a good result on the validation set of 20 observations.
 
-subt$tsstamp <- as.POSIXlt(as.numeric(paste0(subt$raw_timestamp_part_1,".",subt$raw_timestamp_part_2)),tz="GMT",origin = "1970-01-01")
+As a consequence, XGboost models is kept as better solution for classification of this example.
 
-train.classA <- subt[subt$class=="A",]
-train.classB <- subt[subt$class=="B",]
-train.classC <- subt[subt$class=="C",]
-train.classD <- subt[subt$class=="D",]
-train.classE <- subt[subt$class=="E",]
+```{r Confusion Matrix RF }
 
+pred.ranger <- predict(ranger.fit,newdata=test.set)
 
-train.classA.sub <- dplyr::select(train.classA,-user_name, -tsstamp,-raw_timestamp_part_1,-raw_timestamp_part_2)
-train.classB.sub <- dplyr::select(train.classB,-user_name, -classe, -tsstamp,-raw_timestamp_part_1,-raw_timestamp_part_2)
-train.classC.sub <- dplyr::select(train.classC,-user_name, -classe, -tsstamp,-raw_timestamp_part_1,-raw_timestamp_part_2)
-train.classD.sub <- dplyr::select(train.classD,-user_name, -classe, -tsstamp,-raw_timestamp_part_1,-raw_timestamp_part_2)
-train.classE.sub <- dplyr::select(train.classE,-user_name, -classe, -tsstamp,-raw_timestamp_part_1,-raw_timestamp_part_2)
+confusionMatrix(test.labels,pred.ranger)
+```
 
-train.classA.zoo <- zoo(train.classA.sub,train.classA$tsstamp)
-train.classB.zoo <- zoo(train.classA.sub,train.classB$tsstamp)
-train.classC.zoo <- zoo(train.classA.sub,train.classC$tsstamp)
-train.classD.zoo <- zoo(train.classA.sub,train.classD$tsstamp)
-train.classE.zoo <- zoo(train.classA.sub,train.classE$tsstamp)
+```{r Confusion Matrix XGBoost }
 
-library("depmixS4") #the HMM library we’ll use 
-library("quantmod")
+test.xgb <- xgb.DMatrix(data.matrix(test.set), label=(as.numeric(test.labels)-1), missing=NA)
+pred.xgb <- predict(xgb.fit,newdata=test.xgb)
+pred.xgb <- matrix(pred.xgb,nrow=length(pred.xgb)/5,ncol=5,byrow=T)
+confusionMatrix((test.labels),c("A","B","C","D","E")[max.col(pred.xgb,"last")])
+```
 
-fitA <- depmix(classe~.,data=train.classA.zoo,nstates=3)
-```  
+## Result and Validation Set Prediction
+
+XgBoost selected model has sort the feature by importance for the classification of the observations. Here under table gives some mode details on the feature that are more impacting for the classification.
+
+```{r Importance of Features}
+xgb.importance(names(train.set),model=xgb.fit)
+```
+
+Provided set of 20 observations are then classified. Result is shown here under.
+
+```{r Validation Set Prediction with XGBoost}
+
+validation <- read.csv("test.csv",stringsAsFactors = FALSE)
+t_validation <- validation %>% select_if(is.numeric) %>% 
+        select_if(function(col)all(!is.na(col))) %>%
+        dplyr::select(-raw_timestamp_part_1,-raw_timestamp_part_2,-num_window,-X)
+
+pred.xgb <- predict(xgb.fit,newdata=data.matrix(t_validation[names(t_training)]))
+pred.xgb <- matrix(pred.xgb,nrow=length(pred.xgb)/5,ncol=5,byrow=T)
+validation.prediction <- c("A","B","C","D","E")[max.col(pred.xgb,"last")]
+validation.prediction
+```
+
