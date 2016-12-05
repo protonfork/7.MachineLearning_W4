@@ -1,17 +1,21 @@
 ---
-title: "Machine Learning Project : Humain Activity Recognition"
+title: 'Machine Learning Project : Humain Activity Recognition'
 author: "Nicolas"
 date: "14 novembre 2016"
-output: pdf_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
-```{r setup}
+```{r setup, message=FALSE,echo=FALSE,error=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(plyr)
 library(dplyr)
 library(GGally)
+library(corrplot)
 library(caret)
 library(xgboost)
+library(Ckmeans.1d.dp)
 set.seed(1234)
 ```
 
@@ -41,7 +45,6 @@ library(corrplot)
 sub.training <- training %>% select_if(is.numeric) %>% 
         select_if(function(col)all(!is.na(col))) %>%
         dplyr::select(-raw_timestamp_part_1,-raw_timestamp_part_2,-num_window,-X)
-sub.training <- scale(sub.training,center=TRUE,scale=TRUE);
 ```
 
 Correlation between features, as shown in the following figures, is in vast majority in good chape for later analysis, with most of the feature being square.
@@ -56,21 +59,20 @@ We filter the feature set, limiting the correlation factor to 0.85. It will limi
 ```{r check for highly correlated features}
 HighCorr <- findCorrelation(cor.sub.training, 0.85)
 sub.filtered.training <- sub.training[,-HighCorr]
-cor.sub.f.training <- cor(sub.filtered.training)
-corrplot(cor.sub.f.training, order = "hclust", tl.col="black", tl.cex=.45)
+sub.filtered.training <- sub.training
 ```
 
 ## Model Training
 We trained two models for classificiation, with multiclass (5 expected) :
 
-- A random forest
+- A random forest model
 - A XgBoost model
 
 In order to compare both models, the filtered training set is splitted in training and test set. Test set will be used to compare the models.
 
 In addition, both are crossvalidated using a 4 fold resample.
 
-```{r training models : random forest (ranger package) }
+```{r training models random forest (ranger package), cache=TRUE }
 trainIndex <- createDataPartition(training$classe,p=.8,list=F,times=1)
 train.set <- sub.filtered.training[trainIndex,]
 test.set <- sub.filtered.training[-trainIndex,]
@@ -80,10 +82,10 @@ test.labels <- as.factor(training$classe[-trainIndex])
 
 ctrl <- trainControl(method = "cv", number = 4, returnResamp = "all", search = "random",classProbs = T)
 
-ranger.fit <- train(y=train.labels,x=train.set, method = "ranger", trControl = ctrl, metric = "Accuracy", preProc = c("center", "scale"), importance = "permutation", verbose=F)
+ranger.fit <- train(y=train.labels,x=train.set, method = "ranger", trControl = ctrl, metric = "Accuracy", importance = "permutation", verbose=F)
 ```
 
-```{r training models : XG Boost}
+```{r training models  XG Boost, cache=TRUE}
 train.xgb <- xgb.DMatrix(data.matrix(train.set), label=(as.numeric(train.labels)-1), missing=NA)
 
 params.xgb <- list(
@@ -129,22 +131,19 @@ confusionMatrix((test.labels),c("A","B","C","D","E")[max.col(pred.xgb,"last")])
 
 ## Result and Validation Set Prediction
 
-XgBoost selected model has sort the feature by importance for the classification of the observations. Here under table gives some mode details on the feature that are more impacting for the classification.
+XgBoost selected model has sort the feature by importance for the classification of the observations. Here under table list the 10  feature that are more impacting for the classification.
 
-```{r Importance of Features}
-xgb.importance(names(train.set),model=xgb.fit)
+```{r Importance of Features, cache = TRUE}
+feat_imp <- xgb.importance(names(train.set),model=xgb.fit)
+xgb.plot.importance(feat_imp[1:10,],1)+theme(legend.position = "none")
 ```
 
 Provided set of 20 observations are then classified. Result is shown here under.
 
 ```{r Validation Set Prediction with XGBoost}
-
 validation <- read.csv("test.csv",stringsAsFactors = FALSE)
-t_validation <- validation %>% select_if(is.numeric) %>% 
-        select_if(function(col)all(!is.na(col))) %>%
-        dplyr::select(-raw_timestamp_part_1,-raw_timestamp_part_2,-num_window,-X)
-
-pred.xgb <- predict(xgb.fit,newdata=data.matrix(t_validation[names(t_training)]))
+t_validation <- validation[,names(data.frame(sub.filtered.training))]
+pred.xgb <- predict(xgb.fit,newdata=data.matrix(t_validation))
 pred.xgb <- matrix(pred.xgb,nrow=length(pred.xgb)/5,ncol=5,byrow=T)
 validation.prediction <- c("A","B","C","D","E")[max.col(pred.xgb,"last")]
 validation.prediction
