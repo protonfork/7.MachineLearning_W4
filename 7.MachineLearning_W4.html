@@ -126,7 +126,7 @@ $(document).ready(function () {
 <div id="summary" class="section level2">
 <h2>Summary</h2>
 <p>The above study consist into the selection of a machine learning model for the classification of observations related to Weight Lifting Exercise. Data set provided has been splitted in a train and test sets. Train set model has been developped and cross validated using random forest algorithm and XgBoost, then selected based on the accurary on the test set.</p>
-<p>Although Random Forest shown good result with a &gt;99% accuracy, XgBoost has been selected considering a slightly better accurary with a smaller calculation time. Several features has reveled themselves to be important for classification, in particular XXXXxxx, XXXxxx and XxxxxXX with gather XX% of impact on the selected model.</p>
+<p>Although Random Forest shown good result with a &gt;99% accuracy, XgBoost has been selected considering a slightly better accurary with a smaller calculation time. Several features has reveled themselves to be important for classification.</p>
 <p>Finaly, provided validation set of 20 observations has been classified using the trained model.</p>
 </div>
 <div id="processing" class="section level2">
@@ -196,9 +196,10 @@ xgb.fit &lt;- xgboost(param=params.xgb,data = train.xgb,nrounds=best.rank, verbo
 <h2>model selection</h2>
 <p>Here under confugion matrix shows a sligth advantage for the XgBoost algoritm. Accuraty on the test set of both models are very good, and we expect a good result on the validation set of 20 observations.</p>
 <p>As a consequence, XGboost models is kept as better solution for classification of this example.</p>
-<pre class="r"><code>pred.ranger &lt;- predict(ranger.fit,newdata=test.set)
-
-confusionMatrix(test.labels,pred.ranger)</code></pre>
+<pre class="r"><code>pred.ranger &lt;- predict(ranger.fit,newdata=test.set)</code></pre>
+<pre><code>## Loading required package: e1071</code></pre>
+<pre><code>## Loading required package: ranger</code></pre>
+<pre class="r"><code>confusionMatrix(test.labels,pred.ranger)</code></pre>
 <pre><code>## Confusion Matrix and Statistics
 ## 
 ##           Reference

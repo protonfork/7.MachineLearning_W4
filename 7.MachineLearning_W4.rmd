@@ -22,7 +22,7 @@ set.seed(1234)
 ## Summary
 The above study consist into the selection of a machine learning model for the classification of observations related to Weight Lifting Exercise. Data set provided has been splitted in a train and test sets. Train set model has been developped and cross validated using random forest algorithm and XgBoost, then selected based on the accurary on the test set. 
 
-Although Random Forest shown good result with a >99% accuracy, XgBoost has been selected considering a slightly better accurary with a smaller calculation time. Several features has reveled themselves to be important for classification, in particular XXXXxxx, XXXxxx and XxxxxXX with gather XX% of impact on the selected model.
+Although Random Forest shown good result with a >99% accuracy, XgBoost has been selected considering a slightly better accurary with a smaller calculation time. Several features has reveled themselves to be important for classification.
 
 Finaly, provided validation set of 20 observations has been classified using the trained model.
 
